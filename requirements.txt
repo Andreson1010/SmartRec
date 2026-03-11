@@ -1,0 +1,14 @@
+fastapi
+uvicorn[standard]
+pandas
+pyarrow
+numpy
+scikit-learn
+sentence-transformers
+scipy
+mlflow
+pydantic
+python-dotenv
+pytest
+black
+flake8
