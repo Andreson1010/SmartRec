@@ -150,6 +150,8 @@ def filter_cold_start(
     products_removed_total = 0
 
     while True:
+        prev_len = len(df)
+
         # Filter users
         user_counts = df["user_id"].value_counts()
         valid_users = user_counts[user_counts >= min_user_reviews].index
@@ -164,13 +166,8 @@ def filter_cold_start(
         df = df[df["product_id"].isin(valid_products)]
         products_removed_total += before_p - len(df)
 
-        # Stop when nothing changes
-        if before_u == len(df) + (before_u - len(df)) and before_p == len(df) + (before_p - len(df)):
-            break
-        if users_removed_total + products_removed_total == 0:
-            break
-        # Re-check: if last pass removed nothing, stop
-        if (before_u - len(df)) == 0 and (before_p - len(df)) == 0:
+        # Stop when nothing changes in this pass
+        if len(df) == prev_len:
             break
 
     return df, users_removed_total, products_removed_total
@@ -295,6 +292,7 @@ def print_quality_report(
     n_raw: int,
     n_after_dedup: int,
     n_after_nulls: int,
+    n_after_rating_filter: int,
     n_after_cold_start: int,
     interactions: pd.DataFrame,
 ) -> None:
@@ -308,6 +306,8 @@ def print_quality_report(
         Record count after duplicate removal.
     n_after_nulls:
         Record count after null removal.
+    n_after_rating_filter:
+        Record count after invalid-rating removal (rating not in [1, 5]).
     n_after_cold_start:
         Record count after cold-start filtering.
     interactions:
@@ -323,7 +323,8 @@ def print_quality_report(
     print(f"  Raw records          : {n_raw:>10,}")
     print(f"  After deduplication  : {n_after_dedup:>10,}  (dropped {n_raw - n_after_dedup:,})")
     print(f"  After null removal   : {n_after_nulls:>10,}  (dropped {n_after_dedup - n_after_nulls:,})")
-    print(f"  After cold-start     : {n_after_cold_start:>10,}  (dropped {n_after_nulls - n_after_cold_start:,})")
+    print(f"  After rating filter  : {n_after_rating_filter:>10,}  (dropped {n_after_nulls - n_after_rating_filter:,})")
+    print(f"  After cold-start     : {n_after_cold_start:>10,}  (dropped {n_after_rating_filter - n_after_cold_start:,})")
 
     n_users = interactions["user_id"].nunique()
     n_items = interactions["product_id"].nunique()
@@ -394,6 +395,7 @@ def run(
     # --- Rating validity ------------------------------------------------------
     df["rating"] = pd.to_numeric(df["rating"], errors="coerce")
     df = df[df["rating"].between(1, 5)]
+    n_after_rating_filter = len(df)
 
     # --- Cold-start filtering -------------------------------------------------
     print(
@@ -427,6 +429,7 @@ def run(
         n_raw=n_raw,
         n_after_dedup=n_after_dedup,
         n_after_nulls=n_after_nulls,
+        n_after_rating_filter=n_after_rating_filter,
         n_after_cold_start=n_after_cold_start,
         interactions=interactions,
     )
