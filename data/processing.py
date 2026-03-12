@@ -34,16 +34,83 @@ PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
 
 
 # ---------------------------------------------------------------------------
-# Loading
+# Format detection helpers
 # ---------------------------------------------------------------------------
 
-def load_reviews(path: Path) -> pd.DataFrame:
-    """Load the reviews CSV and normalise column names.
+# Supported extensions tried in order when resolving a raw file by stem
+_CANDIDATE_SUFFIXES: list[str] = [
+    "parquet", "json.gz", "jsonl.gz", "json", "jsonl", "csv.gz", "csv"
+]
+
+
+def _is_json_path(path: Path) -> bool:
+    """Return True if *path* looks like a JSON Lines file (plain or gzip)."""
+    name = path.name.lower()
+    return (
+        name.endswith(".json.gz")
+        or name.endswith(".jsonl.gz")
+        or name.endswith(".json")
+        or name.endswith(".jsonl")
+    )
+
+
+def _read_dataframe(path: Path) -> pd.DataFrame:
+    """Read a DataFrame from Parquet, CSV or JSON Lines, with optional gzip.
 
     Parameters
     ----------
     path:
-        Path to the raw reviews CSV file.
+        Path to the file. Supported extensions:
+        ``.parquet``, ``.csv``, ``.csv.gz``, ``.json``, ``.jsonl``,
+        ``.json.gz``, ``.jsonl.gz``.
+
+    Returns
+    -------
+    pd.DataFrame
+    """
+    if path.suffix == ".parquet":
+        return pd.read_parquet(path)
+    if _is_json_path(path):
+        return pd.read_json(path, lines=True)
+    return pd.read_csv(path, low_memory=False)
+
+
+def _resolve_raw_file(directory: Path, stem: str) -> Path | None:
+    """Find a raw data file by *stem*, trying multiple extensions.
+
+    Parameters
+    ----------
+    directory:
+        Directory to search (e.g. ``data/raw/``).
+    stem:
+        Base name without extension (e.g. ``"reviews"``).
+
+    Returns
+    -------
+    Path or None
+        First matching path, or *None* if no candidate exists.
+    """
+    for suffix in _CANDIDATE_SUFFIXES:
+        candidate = directory / f"{stem}.{suffix}"
+        if candidate.exists():
+            return candidate
+    return None
+
+
+# ---------------------------------------------------------------------------
+# Loading
+# ---------------------------------------------------------------------------
+
+def load_reviews(path: Path) -> pd.DataFrame:
+    """Load the reviews file (CSV or JSON Lines) and normalise column names.
+
+    Accepts the Amazon Electronics Reviews dataset in any of these formats:
+    ``.csv``, ``.csv.gz``, ``.json``, ``.jsonl``, ``.json.gz``, ``.jsonl.gz``.
+
+    Parameters
+    ----------
+    path:
+        Path to the raw reviews file.
 
     Returns
     -------
@@ -51,13 +118,13 @@ def load_reviews(path: Path) -> pd.DataFrame:
         Raw reviews with at minimum the columns:
         ``user_id``, ``product_id``, ``rating``, ``timestamp``.
     """
-    df = pd.read_csv(path, low_memory=False)
+    df = _read_dataframe(path)
 
-    # Map common Amazon dataset column names → internal names
+    # Map Amazon dataset column names (classic and 2023) → internal names
     rename_map: dict[str, str] = {
-        "reviewerID": "user_id",
-        "asin":       "product_id",
-        "overall":    "rating",
+        "reviewerID":    "user_id",
+        "asin":          "product_id",
+        "overall":       "rating",
         "unixReviewTime": "timestamp",
     }
     df = df.rename(columns={k: v for k, v in rename_map.items() if k in df.columns})
@@ -66,18 +133,21 @@ def load_reviews(path: Path) -> pd.DataFrame:
     required = {"user_id", "product_id", "rating"}
     missing = required - set(df.columns)
     if missing:
-        raise ValueError(f"reviews.csv is missing required columns: {missing}")
+        raise ValueError(f"{path.name} is missing required columns: {missing}")
 
     return df
 
 
 def load_products(path: Path) -> pd.DataFrame | None:
-    """Load the optional products metadata CSV.
+    """Load the optional products metadata file (CSV or JSON Lines).
+
+    Handles both the classic Amazon dataset (``asin``, ``categories`` as
+    nested list) and the 2023 version (``parent_asin``, ``main_category``).
 
     Parameters
     ----------
     path:
-        Path to the raw products CSV file.
+        Path to the raw products file.
 
     Returns
     -------
@@ -87,13 +157,40 @@ def load_products(path: Path) -> pd.DataFrame | None:
     if not path.exists():
         return None
 
-    df = pd.read_csv(path, low_memory=False)
+    df = _read_dataframe(path)
 
     rename_map: dict[str, str] = {
-        "asin":        "product_id",
-        "categories":  "category",
+        "asin":         "product_id",
+        "parent_asin":  "product_id",   # Amazon 2023 metadata
+        "categories":   "category",
+        "main_category": "category",    # Amazon 2023 metadata
     }
-    df = df.rename(columns={k: v for k, v in rename_map.items() if k in df.columns})
+    # Apply only the first matching rename to avoid duplicate columns
+    for src, dst in rename_map.items():
+        if src in df.columns and dst not in df.columns:
+            df = df.rename(columns={src: dst})
+
+    # Classic dataset: categories is a nested list → flatten to string
+    if "category" in df.columns and df["category"].dtype == object:
+
+        def _flatten_category(val: object) -> object:
+            if isinstance(val, list):
+                # [[cat1, cat2, ...]] or [cat1, cat2, ...]
+                flat = val[0] if val and isinstance(val[0], list) else val
+                return flat[-1] if flat else None
+            return val
+
+        df["category"] = df["category"].apply(_flatten_category)
+
+    # Amazon 2023: description is list[str] → join into single string
+    if "description" in df.columns and df["description"].dtype == object:
+
+        def _flatten_description(val: object) -> object:
+            if isinstance(val, list):
+                return " ".join(str(v) for v in val if v) or None
+            return val
+
+        df["description"] = df["description"].apply(_flatten_description)
 
     return df
 
@@ -313,7 +410,7 @@ def print_quality_report(
     interactions:
         Final interactions DataFrame.
     """
-    sep = "─" * 60
+    sep = "-" * 60
 
     print(f"\n{sep}")
     print("  SmartRec — Data Quality Report")
@@ -339,7 +436,7 @@ def print_quality_report(
     print("\n[Rating distribution]")
     dist = interactions["rating"].value_counts().sort_index()
     for rating, count in dist.items():
-        bar = "█" * int(count / n_interactions * 40)
+        bar = "#" * int(count / n_interactions * 40)
         print(f"  {rating:.1f}  {bar:<40}  {count:,} ({count / n_interactions:.1%})")
 
     print(f"\n{sep}\n")
@@ -362,13 +459,12 @@ def run(
     min_product_reviews:
         Minimum reviews per product to be retained.
     """
-    reviews_path = RAW_DIR / "reviews.csv"
-    products_path = RAW_DIR / "products.csv"
-
-    if not reviews_path.exists():
+    reviews_path = _resolve_raw_file(RAW_DIR, "reviews")
+    if reviews_path is None:
+        supported = ", ".join(f"reviews.{s}" for s in _CANDIDATE_SUFFIXES)
         print(
-            f"[ERROR] Expected reviews file not found: {reviews_path}\n"
-            "        Place the Amazon Electronics Reviews CSV at data/raw/reviews.csv",
+            f"[ERROR] Reviews file not found in {RAW_DIR}\n"
+            f"        Supported names: {supported}",
             file=sys.stderr,
         )
         sys.exit(1)
@@ -378,9 +474,10 @@ def run(
     n_raw = len(df)
 
     print("Loading product metadata …")
-    products_meta = load_products(products_path)
+    products_path = _resolve_raw_file(RAW_DIR, "products")
+    products_meta = load_products(products_path) if products_path else None
     if products_meta is None:
-        print("  products.csv not found — product table will be minimal.")
+        print("  products file not found — product table will be minimal.")
 
     # --- Deduplication --------------------------------------------------------
     print("Removing duplicates …")
@@ -420,9 +517,9 @@ def run(
     products.to_parquet(products_path_out, index=False, engine="pyarrow")
     users.to_parquet(users_path_out, index=False, engine="pyarrow")
 
-    print(f"  Saved → {interactions_path}")
-    print(f"  Saved → {products_path_out}")
-    print(f"  Saved → {users_path_out}")
+    print(f"  Saved: {interactions_path}")
+    print(f"  Saved: {products_path_out}")
+    print(f"  Saved: {users_path_out}")
 
     # --- Report ---------------------------------------------------------------
     print_quality_report(
