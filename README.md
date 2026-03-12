@@ -9,30 +9,52 @@ SmartRec é um sistema de recomendação híbrido que combina filtragem colabora
 ```
 smartrec/
 ├── data/
-│   ├── raw/            # Dados brutos (interações, metadados de itens)
-│   ├── processed/      # Dados após pré-processamento
-│   └── embeddings/     # Vetores gerados pelos modelos semânticos
+│   ├── processing.py   # pipeline: raw → interactions/products/users.parquet
+│   ├── eda.py          # análise exploratória → reports/figures/
+│   ├── raw/            # dados brutos (reviews.jsonl — não versionado)
+│   ├── processed/      # interactions.parquet, products.parquet, users.parquet
+│   └── embeddings/     # embeddings.npy + product_ids.npy (não versionados)
 ├── ml/
-│   ├── collaborative/  # Filtragem colaborativa (matrix factorization, KNN)
-│   ├── semantic/       # Recomendação por similaridade semântica (embeddings)
-│   ├── hybrid/         # Combinação dos modelos colaborativo + semântico
-│   └── evaluation/     # Métricas: Precision@K, Recall@K, NDCG, MRR
+│   ├── collaborative/  # SVDRecommender, KNNRecommender (via scikit-surprise)
+│   ├── semantic/       # ProductEmbedder + SemanticRetriever (Sentence Transformers)
+│   ├── hybrid/         # HybridRecommender — modelo de produção (weighted fusion / RRF)
+│   └── evaluation/     # precision_at_k, recall_at_k, ndcg_at_k, mrr
 ├── api/
-│   ├── routers/        # Endpoints FastAPI
-│   ├── models/         # Schemas Pydantic
-│   └── services/       # Lógica de negócio / orquestração
-├── frontend/           # Interface de demonstração
-├── mlflow/             # Configuração do servidor MLflow
-├── docker/             # Dockerfiles e docker-compose
-└── .github/workflows/  # CI/CD pipelines
+│   ├── main.py         # app FastAPI
+│   ├── routers/        # endpoints (router não importa ml/ diretamente)
+│   ├── models/         # schemas Pydantic request/response
+│   └── services/       # orquestração → chama ml/hybrid/
+├── notebooks/
+│   └── 01_eda.ipynb    # exploração interativa
+├── reports/figures/    # PNGs gerados por eda.py (não versionados)
+├── mlflow/             # configuração do servidor MLflow
+└── docker/             # Dockerfiles e docker-compose
 ```
 
 **Fluxo de dados:**
-1. Dados brutos ingeridos em `data/raw/`
-2. Pré-processamento gera artefatos em `data/processed/` e `data/embeddings/`
-3. Modelos treinados em `ml/collaborative/` e `ml/semantic/`, combinados em `ml/hybrid/`
-4. API em `api/` serve predições usando os modelos treinados
-5. Experimentos e métricas registrados no MLflow
+
+```
+data/raw/
+    └─► data/processing.py ──► data/processed/*.parquet
+                                        │
+                    ┌───────────────────┴────────────────────┐
+                    ▼                                        ▼
+          ml/collaborative/                         ml/semantic/
+          SVD + KNN (Surprise)               ProductEmbedder (all-MiniLM-L6-v2)
+          artifacts/svd.pkl                 data/embeddings/*.npy
+                    │                                        │
+                    └───────────────┬────────────────────────┘
+                                    ▼
+                             ml/hybrid/
+                         HybridRecommender
+                       (alpha * CF + (1-alpha) * semântico)
+                         artifacts/hybrid.pkl
+                                    │
+                                    ▼
+                          api/ → POST /recommendations
+```
+
+Experimentos e métricas (`precision@10`, `recall@10`, `ndcg@10`, `mrr`) registrados no MLflow em `smartrec/collaborative`, `smartrec/semantic` e `smartrec/hybrid`.
 
 ## Setup
 
