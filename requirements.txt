@@ -10,6 +10,7 @@ mlflow
 pydantic
 python-dotenv
 pytest
+pytest-cov
 black
 flake8
 matplotlib>=3.7
