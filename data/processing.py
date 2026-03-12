@@ -39,7 +39,7 @@ PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
 
 # Supported extensions tried in order when resolving a raw file by stem
 _CANDIDATE_SUFFIXES: list[str] = [
-    "json.gz", "jsonl.gz", "json", "jsonl", "csv.gz", "csv"
+    "parquet", "json.gz", "jsonl.gz", "json", "jsonl", "csv.gz", "csv"
 ]
 
 
@@ -55,19 +55,21 @@ def _is_json_path(path: Path) -> bool:
 
 
 def _read_dataframe(path: Path) -> pd.DataFrame:
-    """Read a DataFrame from CSV or JSON Lines, with optional gzip compression.
+    """Read a DataFrame from Parquet, CSV or JSON Lines, with optional gzip.
 
     Parameters
     ----------
     path:
         Path to the file. Supported extensions:
-        ``.csv``, ``.csv.gz``, ``.json``, ``.jsonl``,
+        ``.parquet``, ``.csv``, ``.csv.gz``, ``.json``, ``.jsonl``,
         ``.json.gz``, ``.jsonl.gz``.
 
     Returns
     -------
     pd.DataFrame
     """
+    if path.suffix == ".parquet":
+        return pd.read_parquet(path)
     if _is_json_path(path):
         return pd.read_json(path, lines=True)
     return pd.read_csv(path, low_memory=False)
@@ -170,13 +172,25 @@ def load_products(path: Path) -> pd.DataFrame | None:
 
     # Classic dataset: categories is a nested list → flatten to string
     if "category" in df.columns and df["category"].dtype == object:
+
         def _flatten_category(val: object) -> object:
             if isinstance(val, list):
                 # [[cat1, cat2, ...]] or [cat1, cat2, ...]
                 flat = val[0] if val and isinstance(val[0], list) else val
                 return flat[-1] if flat else None
             return val
+
         df["category"] = df["category"].apply(_flatten_category)
+
+    # Amazon 2023: description is list[str] → join into single string
+    if "description" in df.columns and df["description"].dtype == object:
+
+        def _flatten_description(val: object) -> object:
+            if isinstance(val, list):
+                return " ".join(str(v) for v in val if v) or None
+            return val
+
+        df["description"] = df["description"].apply(_flatten_description)
 
     return df
 
@@ -396,7 +410,7 @@ def print_quality_report(
     interactions:
         Final interactions DataFrame.
     """
-    sep = "─" * 60
+    sep = "-" * 60
 
     print(f"\n{sep}")
     print("  SmartRec — Data Quality Report")
@@ -422,7 +436,7 @@ def print_quality_report(
     print("\n[Rating distribution]")
     dist = interactions["rating"].value_counts().sort_index()
     for rating, count in dist.items():
-        bar = "█" * int(count / n_interactions * 40)
+        bar = "#" * int(count / n_interactions * 40)
         print(f"  {rating:.1f}  {bar:<40}  {count:,} ({count / n_interactions:.1%})")
 
     print(f"\n{sep}\n")
@@ -503,9 +517,9 @@ def run(
     products.to_parquet(products_path_out, index=False, engine="pyarrow")
     users.to_parquet(users_path_out, index=False, engine="pyarrow")
 
-    print(f"  Saved → {interactions_path}")
-    print(f"  Saved → {products_path_out}")
-    print(f"  Saved → {users_path_out}")
+    print(f"  Saved: {interactions_path}")
+    print(f"  Saved: {products_path_out}")
+    print(f"  Saved: {users_path_out}")
 
     # --- Report ---------------------------------------------------------------
     print_quality_report(
