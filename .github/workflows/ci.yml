@@ -1,0 +1,32 @@
+name: CI
+
+on:
+  push:
+    branches: ["main", "feat/**", "fix/**", "refactor/**"]
+  pull_request:
+    branches: ["main"]
+
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configurar Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Instalar dependências
+        run: pip install -r requirements.txt
+
+      - name: Lint — flake8
+        run: flake8 ml/ api/ --max-line-length=88 --ignore=E203,W503
+
+      - name: Formato — black (check)
+        run: black --check --line-length=88 ml/ api/
+
+      - name: Testes — pytest
+        run: pytest tests/ --cov=ml --cov=api --cov-report=term-missing -q
