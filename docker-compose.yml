@@ -1,0 +1,45 @@
+services:
+
+  mlflow:
+    image: python:3.11-slim
+    command: >
+      bash -c "pip install --quiet mlflow &&
+               mlflow server
+               --host 0.0.0.0
+               --port 5000
+               --backend-store-uri sqlite:///mlflow/mlflow.db
+               --default-artifact-root /mlflow/artifacts"
+    ports:
+      - "5000:5000"
+    volumes:
+      - mlflow_data:/mlflow
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  api:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      MLFLOW_TRACKING_URI: http://mlflow:5000
+    volumes:
+      # Artefatos gerados localmente (gitignored) montados como volumes
+      - ./data/embeddings:/app/data/embeddings:ro
+      - ./ml/hybrid/artifacts:/app/ml/hybrid/artifacts:ro
+      - ./ml/collaborative/artifacts:/app/ml/collaborative/artifacts:ro
+    depends_on:
+      mlflow:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+volumes:
+  mlflow_data:
