@@ -1,3 +1,8 @@
+---
+name: test-pattern
+description: Padrão para escrever testes no SmartRec. Use esta skill sempre que for criar ou modificar arquivos de teste (test_*.py), escrever fixtures com dados sintéticos, mockar MLflow ou dependências externas, cobrir cold start, serialização ou edge cases em modelos de ML, ou implementar testes para endpoints FastAPI.
+---
+
 # Skill: test-pattern
 
 Padrão para escrever testes no SmartRec.

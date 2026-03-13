@@ -1,34 +1,9 @@
----
-name: hybrid-fusion-strategies
-description: Padrão para implementar o HybridRecommender no SmartRec, combinando filtragem colaborativa (CF) com busca semântica. Use esta skill sempre que for criar ou modificar ml/hybrid/recommender.py, implementar estratégias de fusão (weighted average ou Reciprocal Rank Fusion), tunear o parâmetro alpha, ou registrar o modelo híbrido no MLflow Model Registry.
----
-
-# Skill: hybrid-fusion-strategies
-
-Padrão para combinar scores do modelo colaborativo (CF) e semântico no SmartRec.
-
-## Localização
-
-```
-ml/hybrid/
-├── recommender.py   ← HybridRecommender (modelo de produção)
-└── artifacts/       ← modelo serializado
-```
-
-## Estratégias de fusão disponíveis
-
-| Estratégia       | Quando usar                                                       |
-|------------------|-------------------------------------------------------------------|
-| `weighted`       | Padrão. Alpha fixo tunado offline. Simples e interpretável.       |
-| `rank_fusion`    | Quando as escalas dos scores forem muito diferentes.              |
-| `learned_alpha`  | Quando houver dados suficientes para aprender o peso dinamicamente.|
-
-## Implementação (`recommender.py`)
-
-```python
 """
 ml/hybrid/recommender.py
+------------------------
+HybridRecommender: combina filtragem colaborativa (SVD) com busca semântica.
 """
+
 from __future__ import annotations
 
 import logging
@@ -36,7 +11,6 @@ import pickle
 from pathlib import Path
 from typing import Any, Literal
 
-import mlflow
 import numpy as np
 import pandas as pd
 
@@ -45,6 +19,7 @@ from ml.semantic.retriever import SemanticRetriever
 
 logger = logging.getLogger(__name__)
 
+ROOT = Path(__file__).resolve().parent.parent.parent
 FusionStrategy = Literal["weighted", "rank_fusion"]
 
 
@@ -56,7 +31,7 @@ class HybridRecommender:
     alpha:
         Peso do modelo colaborativo em ``[0, 1]``.
         ``1 - alpha`` é o peso do modelo semântico.
-        Relevante apenas para strategy="weighted".
+        Relevante apenas para ``strategy="weighted"``.
     strategy:
         Estratégia de fusão: ``"weighted"`` ou ``"rank_fusion"``.
     cf_model_path:
@@ -64,26 +39,32 @@ class HybridRecommender:
     embeddings_dir:
         Diretório com os embeddings de produtos.
     version:
-        Versão do modelo (usada pelo endpoint da API).
+        Versão do modelo (retornada pelo endpoint da API).
     """
 
     def __init__(
         self,
         alpha: float = 0.6,
         strategy: FusionStrategy = "weighted",
-        cf_model_path: Path = Path("ml/collaborative/artifacts"),
-        embeddings_dir: Path = Path("data/embeddings"),
+        cf_model_path: Path = ROOT / "ml" / "collaborative" / "artifacts",
+        embeddings_dir: Path = ROOT / "data" / "embeddings",
         version: str = "1.0.0",
     ) -> None:
-        self.alpha        = alpha
-        self.strategy     = strategy
-        self.version      = version
-        self._cf          = SVDRecommender.load(cf_model_path)
-        self._semantic    = SemanticRetriever(embeddings_dir)
+        self.alpha = alpha
+        self.strategy = strategy
+        self.version = version
+        self._cf: SVDRecommender = SVDRecommender.load(cf_model_path)
+        self._semantic: SemanticRetriever = SemanticRetriever(embeddings_dir)
 
     # ------------------------------------------------------------------
     def predict(self, user_id: str, top_k: int = 10) -> list[dict[str, Any]]:
         """Gera recomendações híbridas para o usuário.
+
+        Obtém candidatos do CF e do modelo semântico (usando o top item do CF
+        como semente), depois funde os scores pela estratégia configurada.
+
+        Cold start completo (usuário sem histórico e sem item semente) delega
+        inteiramente ao modelo semântico via vetor zero como fallback.
 
         Parameters
         ----------
@@ -95,14 +76,17 @@ class HybridRecommender:
         Returns
         -------
         list[dict]
-            Lista de ``{"product_id": str, "score": float}`` ordenada por score desc.
+            Lista de ``{"product_id": str, "score": float}`` ordenada por
+            score decrescente.
         """
-        cf_recs  = self._cf.predict(user_id, top_k=top_k * 3)    # candidatos extras
-        # Semantic: busca itens similares ao top item do CF como semente
+        cf_recs = self._cf.predict(user_id, top_k=top_k * 3)
+
+        # Semente semântica = top item do CF
         seed_item = cf_recs[0]["product_id"] if cf_recs else None
-        sem_recs  = (
+        sem_recs = (
             self._semantic.query_by_product(seed_item, top_k=top_k * 3)
-            if seed_item else []
+            if seed_item
+            else []
         )
 
         if self.strategy == "weighted":
@@ -116,10 +100,7 @@ class HybridRecommender:
         sem_recs: list[dict],
         top_k: int,
     ) -> list[dict[str, Any]]:
-        """Média ponderada de scores normalizados.
-
-        score_final = alpha * score_cf + (1 - alpha) * score_semantic
-        """
+        """Média ponderada de scores: alpha * CF + (1-alpha) * semântico."""
         scores: dict[str, float] = {}
 
         for item in cf_recs:
@@ -130,7 +111,10 @@ class HybridRecommender:
             scores[pid] = scores.get(pid, 0.0) + (1 - self.alpha) * item["score"]
 
         ranked = sorted(scores.items(), key=lambda x: x[1], reverse=True)
-        return [{"product_id": pid, "score": round(score, 4)} for pid, score in ranked[:top_k]]
+        return [
+            {"product_id": pid, "score": round(score, 4)}
+            for pid, score in ranked[:top_k]
+        ]
 
     def _rank_fusion(
         self,
@@ -139,10 +123,9 @@ class HybridRecommender:
         top_k: int,
         k: int = 60,
     ) -> list[dict[str, Any]]:
-        """Reciprocal Rank Fusion (RRF).
+        """Reciprocal Rank Fusion (RRF): score = sum(1 / (k + rank_i)).
 
-        score_rrf = sum(1 / (k + rank_i))  para cada lista de origem.
-        Não depende da escala dos scores — robusto quando CF e semântico têm escalas diferentes.
+        Robusto a diferenças de escala entre CF e semântico.
         """
         rrf_scores: dict[str, float] = {}
 
@@ -155,7 +138,10 @@ class HybridRecommender:
             rrf_scores[pid] = rrf_scores.get(pid, 0.0) + 1.0 / (k + rank)
 
         ranked = sorted(rrf_scores.items(), key=lambda x: x[1], reverse=True)
-        return [{"product_id": pid, "score": round(score, 6)} for pid, score in ranked[:top_k]]
+        return [
+            {"product_id": pid, "score": round(score, 6)}
+            for pid, score in ranked[:top_k]
+        ]
 
     # ------------------------------------------------------------------
     def tune_alpha(
@@ -178,7 +164,7 @@ class HybridRecommender:
         Returns
         -------
         float
-            Melhor alpha encontrado.
+            Melhor alpha encontrado (também atualiza ``self.alpha``).
         """
         from ml.evaluation.metrics import ndcg_at_k
 
@@ -189,19 +175,23 @@ class HybridRecommender:
             .apply(list)
             .to_dict()
         )
-        users = list(relevant.keys())[:200]   # amostra para velocidade
+        users = list(relevant.keys())[:200]  # amostra para velocidade
 
         best_alpha, best_ndcg = self.alpha, -1.0
         for alpha in alphas:
             self.alpha = alpha
-            ndcgs = []
-            for uid in users:
-                recs = [r["product_id"] for r in self.predict(uid, top_k=k)]
-                ndcgs.append(ndcg_at_k(recs, relevant.get(uid, []), k))
+            ndcgs = [
+                ndcg_at_k(
+                    [r["product_id"] for r in self.predict(uid, top_k=k)],
+                    relevant.get(uid, []),
+                    k,
+                )
+                for uid in users
+            ]
             mean_ndcg = float(np.mean(ndcgs))
             logger.info("alpha=%.1f  ndcg@%d=%.4f", alpha, k, mean_ndcg)
             if mean_ndcg > best_ndcg:
-                best_ndcg  = mean_ndcg
+                best_ndcg = mean_ndcg
                 best_alpha = alpha
 
         self.alpha = best_alpha
@@ -210,33 +200,29 @@ class HybridRecommender:
 
     # ------------------------------------------------------------------
     def save(self, path: Path) -> None:
+        """Serializa o modelo em disco.
+
+        Parameters
+        ----------
+        path:
+            Diretório de destino (criado se não existir).
+        """
         path = Path(path)
         path.mkdir(parents=True, exist_ok=True)
         with open(path / "hybrid.pkl", "wb") as f:
             pickle.dump(self, f)
+        logger.info("HybridRecommender salvo em %s", path)
 
     @classmethod
     def load(cls, path: Path) -> "HybridRecommender":
+        """Carrega o modelo do disco.
+
+        Parameters
+        ----------
+        path:
+            Diretório onde ``hybrid.pkl`` foi salvo por :meth:`save`.
+        """
         with open(Path(path) / "hybrid.pkl", "rb") as f:
-            return pickle.load(f)
-```
-
-## Guia de escolha de alpha
-
-| Cenário                            | Alpha recomendado |
-|------------------------------------|-------------------|
-| Usuários com muitas interações     | 0.7 – 0.8         |
-| Usuários com poucas interações     | 0.3 – 0.5         |
-| Cold start (sem histórico)         | 0.0 (só semântico)|
-| Baseline inicial                   | 0.6               |
-
-## Checklist
-
-- [ ] `predict` chama CF e semântico com `top_k * 3` candidatos antes da fusão
-- [ ] `_weighted_fusion`: scores normalizados para `[0, 1]` antes de combinar
-- [ ] `_rank_fusion`: usar quando as escalas dos dois modelos forem incompatíveis
-- [ ] `tune_alpha` executado no conjunto de validação, resultado logado no MLflow
-- [ ] `version` exposta e retornada pelo endpoint da API
-- [ ] Cold start completo: usuário sem histórico e sem item semente usa semântico puro
-- [ ] Testes mockam `SVDRecommender.load` e `SemanticRetriever` para isolar a fusão
-- [ ] Modelo final registrado no MLflow Model Registry como `smartrec-hybrid`
+            model = pickle.load(f)
+        logger.info("HybridRecommender carregado de %s", path)
+        return model
