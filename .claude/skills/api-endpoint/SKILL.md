@@ -1,3 +1,8 @@
+---
+name: api-endpoint
+description: Padrão para criar endpoints FastAPI no SmartRec. Use esta skill sempre que for criar ou modificar arquivos em api/routers/, api/models/ ou api/services/, implementar um novo endpoint de recomendação, definir schemas Pydantic de request/response, conectar um router a um service, ou tratar erros HTTP (ValueError→404, Exception→500).
+---
+
 # Skill: api-endpoint
 
 Padrão para criar endpoints FastAPI no SmartRec.

@@ -1,3 +1,8 @@
+---
+name: ml-model
+description: Padrão para criar ou implementar qualquer modelo de ML no SmartRec. Use esta skill sempre que for criar um novo modelo (SVD, KNN, embedder, híbrido, ou qualquer outro), adicionar métodos fit/predict/evaluate/save/load, implementar cold start, ou integrar MLflow num modelo. Também use ao criar a classe base BaseRecommender ou ao herdar dela.
+---
+
 # Skill: ml-model
 
 Padrão para criar modelos de ML no SmartRec.

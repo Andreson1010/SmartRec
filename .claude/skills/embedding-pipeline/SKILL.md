@@ -1,3 +1,8 @@
+---
+name: embedding-pipeline
+description: Padrão para geração e busca de embeddings semânticos no SmartRec. Use esta skill sempre que for implementar ml/semantic/embedder.py ou ml/semantic/retriever.py, gerar ou cachear embeddings de produtos com Sentence Transformers (all-MiniLM-L6-v2), implementar busca por similaridade de cosseno, ou trabalhar com ProductEmbedder e SemanticRetriever.
+---
+
 # Skill: embedding-pipeline
 
 Padrão para geração e busca de embeddings semânticos no SmartRec.

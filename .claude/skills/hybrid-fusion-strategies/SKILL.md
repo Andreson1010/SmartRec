@@ -1,3 +1,8 @@
+---
+name: hybrid-fusion-strategies
+description: Padrão para implementar o HybridRecommender no SmartRec, combinando filtragem colaborativa (CF) com busca semântica. Use esta skill sempre que for criar ou modificar ml/hybrid/recommender.py, implementar estratégias de fusão (weighted average ou Reciprocal Rank Fusion), tunear o parâmetro alpha, ou registrar o modelo híbrido no MLflow Model Registry.
+---
+
 # Skill: hybrid-fusion-strategies
 
 Padrão para combinar scores do modelo colaborativo (CF) e semântico no SmartRec.

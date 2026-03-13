@@ -1,3 +1,8 @@
+---
+name: mlflow-experiment-tracking
+description: Padrão para rastreamento de experimentos com MLflow no SmartRec. Use esta skill sempre que for configurar mlflow.set_experiment(), registrar parâmetros, métricas e artefatos, definir tags (model_type, dataset_version, git_commit), promover modelos no Model Registry, ou comparar runs via MlflowClient. Também use ao criar scripts de treino (train.py) que integram MLflow.
+---
+
 # Skill: mlflow-experiment-tracking
 
 Padrão para rastreamento de experimentos com MLflow no SmartRec.
