@@ -31,6 +31,7 @@ services:
       - ./data/embeddings:/app/data/embeddings:ro
       - ./ml/hybrid/artifacts:/app/ml/hybrid/artifacts:ro
       - ./ml/collaborative/artifacts:/app/ml/collaborative/artifacts:ro
+      - ./ml/semantic/artifacts:/app/ml/semantic/artifacts:ro
     depends_on:
       mlflow:
         condition: service_healthy

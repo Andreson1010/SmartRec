@@ -15,7 +15,6 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copia o código-fonte
 COPY api/ api/
 COPY ml/ ml/
-COPY data/processed/ data/processed/
 
 # Variáveis de ambiente padrão (sobrescritas pelo docker-compose)
 ENV MLFLOW_TRACKING_URI=http://mlflow:5000
