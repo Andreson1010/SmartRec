@@ -47,7 +47,9 @@ async def get_recommendations(
             status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)
         ) from exc
     except Exception as exc:
-        logger.exception("Erro inesperado em /recommendations user_id=%s", payload.user_id)
+        logger.exception(
+            "Erro inesperado em /recommendations user_id=%s", payload.user_id
+        )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Erro interno — tente novamente.",

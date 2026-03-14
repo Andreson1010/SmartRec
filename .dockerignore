@@ -1,0 +1,40 @@
+# Git
+.git/
+.gitignore
+
+# Dados brutos e embeddings (montados como volume em produção)
+data/raw/
+data/embeddings/
+
+# Artefatos de modelo (montados como volume em produção)
+ml/hybrid/artifacts/
+ml/collaborative/artifacts/
+ml/semantic/artifacts/
+
+# Ambiente virtual
+.venv/
+venv/
+env/
+
+# Testes e ferramentas de dev
+tests/
+notebooks/
+reports/
+
+# Cache Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+*.egg-info/
+
+# Variáveis de ambiente
+.env
+
+# IDE
+.vscode/
+.idea/
+
+# MLflow local
+mlruns/
