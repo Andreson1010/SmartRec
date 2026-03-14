@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI(
     title="SmartRec API",
-    description="API de recomendação híbrida: filtragem colaborativa + busca semântica.",
+    description="API de recomendação híbrida: CF + busca semântica.",
     version="1.0.0",
 )
 
