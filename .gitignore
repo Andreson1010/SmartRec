@@ -64,3 +64,7 @@ frontend/build/
 # OS
 .DS_Store
 Thumbs.db
+
+# Documento pessoal de estudos — não versionar
+docs/aprendizado.md
+tasks/
