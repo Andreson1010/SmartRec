@@ -55,6 +55,9 @@ class HybridRecommender:
         self.version = version
         self._cf: SVDRecommender = SVDRecommender.load(cf_model_path)
         self._semantic: SemanticRetriever = SemanticRetriever(embeddings_dir)
+        self._indexed_pids: frozenset[str] = frozenset(
+            str(pid) for pid in self._semantic._product_ids
+        )
 
     # ------------------------------------------------------------------
     def predict(self, user_id: str, top_k: int = 10) -> list[dict[str, Any]]:
@@ -100,15 +103,28 @@ class HybridRecommender:
         sem_recs: list[dict],
         top_k: int,
     ) -> list[dict[str, Any]]:
-        """Média ponderada de scores: alpha * CF + (1-alpha) * semântico."""
+        """Média ponderada de scores: alpha * CF + (1-alpha) * semântico.
+
+        Produtos sem embedding no índice semântico usam alpha adaptativo=1
+        (CF puro), evitando penalizar itens sem metadados.
+        """
+        sem_scores = {item["product_id"]: item["score"] for item in sem_recs}
         scores: dict[str, float] = {}
 
         for item in cf_recs:
-            scores[item["product_id"]] = self.alpha * item["score"]
+            pid = item["product_id"]
+            if pid in self._indexed_pids:
+                scores[pid] = (
+                    self.alpha * item["score"]
+                    + (1 - self.alpha) * sem_scores.get(pid, 0.0)
+                )
+            else:
+                scores[pid] = item["score"]
 
         for item in sem_recs:
             pid = item["product_id"]
-            scores[pid] = scores.get(pid, 0.0) + (1 - self.alpha) * item["score"]
+            if pid not in scores:
+                scores[pid] = (1 - self.alpha) * item["score"]
 
         ranked = sorted(scores.items(), key=lambda x: x[1], reverse=True)
         return [

@@ -7,12 +7,10 @@ Testes para HybridRecommender — SVDRecommender e SemanticRetriever mockados.
 from __future__ import annotations
 
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
-import numpy as np
 import pandas as pd
 import pytest
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -49,6 +47,8 @@ def hybrid():
     rec.version = "1.0.0"
     rec._cf = mock_cf
     rec._semantic = mock_semantic
+    # p1, p2, p5 estão apenas no CF (sem embedding); p3, p4, p6, p7, p8 indexados
+    rec._indexed_pids = frozenset(["p3", "p4", "p6", "p7", "p8"])
     return rec
 
 
@@ -118,36 +118,31 @@ class TestWeightedFusion:
     def test_item_appearing_in_both_lists_has_higher_score(self, hybrid) -> None:
         """p3 e p4 aparecem em CF e semântico — devem ter score maior."""
         result = hybrid.predict("u1", top_k=8)
-        ids = [r["product_id"] for r in result]
-        overlap = {"p3", "p4"}
-        only_cf = {"p1", "p2"}
+        assert len(result) > 0  # sanity check
 
-        scores = {r["product_id"]: r["score"] for r in result}
-        for pid in overlap:
-            if pid in scores and only_cf & scores.keys():
-                for cf_only in only_cf:
-                    if cf_only in scores:
-                        # item em ambas as listas pode ter score maior que item só em CF
-                        # (depende dos valores, mas p3 CF=0.7 + sem=0.95 > p1 CF=0.9)
-                        pass  # verificação qualitativa apenas
-
-        assert len(ids) > 0  # sanity check
-
-    def test_alpha_zero_ignores_cf(self, hybrid) -> None:
+    def test_alpha_zero_indexed_products_use_semantic(self, hybrid) -> None:
+        """Com alpha=0, produtos indexados recebem apenas o score semântico."""
         hybrid.alpha = 0.0
-        result = hybrid._weighted_fusion(CF_RECS, SEM_RECS, top_k=5)
-        # com alpha=0, scores de CF são zerados; apenas semântico contribui
-        for item in result:
-            if item["product_id"] in {r["product_id"] for r in CF_RECS} - {
-                r["product_id"] for r in SEM_RECS
-            }:
-                assert item["score"] == 0.0
+        result = hybrid._weighted_fusion(CF_RECS, SEM_RECS, top_k=8)
+        scores = {r["product_id"]: r["score"] for r in result}
+        sem = {r["product_id"]: r["score"] for r in SEM_RECS}
+        # p3 e p4 são indexados + estão no CF: score = 0*cf + 1.0*sem
+        for pid in ["p3", "p4"]:
+            assert scores[pid] == round(sem[pid], 4)
+
+    def test_alpha_zero_unindexed_products_keep_cf_score(self, hybrid) -> None:
+        """Com alpha=0, produtos sem embedding mantêm seu score de CF completo."""
+        hybrid.alpha = 0.0
+        result = hybrid._weighted_fusion(CF_RECS, SEM_RECS, top_k=8)
+        scores = {r["product_id"]: r["score"] for r in result}
+        cf = {r["product_id"]: r["score"] for r in CF_RECS}
+        # p1, p2, p5 não estão em _indexed_pids → score = cf_score bruto
+        for pid in ["p1", "p2", "p5"]:
+            assert scores[pid] == round(cf[pid], 4)
 
     def test_alpha_one_ignores_semantic(self, hybrid) -> None:
         hybrid.alpha = 1.0
         result = hybrid._weighted_fusion(CF_RECS, SEM_RECS, top_k=5)
-        ids = {r["product_id"] for r in result}
-        # com alpha=1, somente itens do CF têm score > 0
         cf_ids = {r["product_id"] for r in CF_RECS}
         for item in result:
             if item["product_id"] not in cf_ids:
@@ -233,6 +228,7 @@ class TestSaveLoad:
         rec.version = "2.0.0"
         rec._cf = None
         rec._semantic = None
+        rec._indexed_pids = frozenset()
         return rec
 
     def test_roundtrip(self, tmp_path: Path) -> None:
