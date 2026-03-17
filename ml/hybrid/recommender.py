@@ -105,19 +105,18 @@ class HybridRecommender:
     ) -> list[dict[str, Any]]:
         """Média ponderada de scores: alpha * CF + (1-alpha) * semântico.
 
-        Produtos sem embedding no índice semântico usam alpha adaptativo=1
-        (CF puro), evitando penalizar itens sem metadados.
+        Fusão ponderada aplicada apenas quando o produto tem score semântico
+        real (>0). Sem score semântico, usa CF puro — evita penalizar itens
+        sem metadados ou cujo seed não estava no índice.
         """
         sem_scores = {item["product_id"]: item["score"] for item in sem_recs}
         scores: dict[str, float] = {}
 
         for item in cf_recs:
             pid = item["product_id"]
-            if pid in self._indexed_pids:
-                scores[pid] = (
-                    self.alpha * item["score"]
-                    + (1 - self.alpha) * sem_scores.get(pid, 0.0)
-                )
+            sem_score = sem_scores.get(pid, 0.0)
+            if pid in self._indexed_pids and sem_score > 0:
+                scores[pid] = self.alpha * item["score"] + (1 - self.alpha) * sem_score
             else:
                 scores[pid] = item["score"]
 
