@@ -49,10 +49,14 @@ class ProductEmbedder:
     def _build_text(self, row: pd.Series) -> str:
         """Concatena title + description em um único texto para embedding."""
         parts = []
-        if pd.notna(row.get("title")):
-            parts.append(str(row["title"]))
-        if pd.notna(row.get("description")):
-            parts.append(str(row["description"]))
+        title = row.get("title")
+        if title is not None and not (isinstance(title, float) and pd.isna(title)):
+            parts.append(str(title))
+        desc = row.get("description")
+        if desc is not None and not (isinstance(desc, float) and pd.isna(desc)):
+            text = " ".join(desc) if isinstance(desc, list) else str(desc)
+            if text.strip():
+                parts.append(text)
         return " | ".join(parts) if parts else str(row.get("product_id", ""))
 
     def fit_transform(self, products: pd.DataFrame) -> np.ndarray:
