@@ -10,6 +10,7 @@ import logging
 
 from fastapi import FastAPI
 
+from api.routers.products import router as products_router
 from api.routers.recommendations import router as recommendations_router
 
 logging.basicConfig(level=logging.INFO)
@@ -22,6 +23,7 @@ app = FastAPI(
 )
 
 app.include_router(recommendations_router)
+app.include_router(products_router)
 
 
 @app.get("/health", tags=["infra"])
