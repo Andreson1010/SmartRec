@@ -22,9 +22,7 @@ class RecommendationService:
     def __init__(self) -> None:
         from ml.hybrid.recommender import HybridRecommender
 
-        self._model = HybridRecommender.load(
-            ROOT / "ml" / "hybrid" / "artifacts"
-        )
+        self._model = HybridRecommender.load(ROOT / "ml" / "hybrid" / "artifacts")
 
     def run(self, payload: RecommendationRequest) -> RecommendationResponse:
         """Executa a recomendação e retorna o response tipado.

@@ -91,9 +91,7 @@ class SemanticRetriever:
         scores = self._embeddings @ vector
         return self._top_k_results(scores, top_k)
 
-    def _top_k_results(
-        self, scores: np.ndarray, top_k: int
-    ) -> list[dict[str, Any]]:
+    def _top_k_results(self, scores: np.ndarray, top_k: int) -> list[dict[str, Any]]:
         """Extrai os top-K índices e monta a lista de resultado."""
         top_k = min(top_k, len(scores))
         top_indices = np.argpartition(scores, -top_k)[-top_k:]
