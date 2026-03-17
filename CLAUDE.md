@@ -85,3 +85,36 @@ pytest tests/ --cov=. --cov-report=term-missing
 - Hardcodar caminhos absolutos
 - Usar dados reais em testes
 - Rodar MLflow sem mock em testes
+
+## Task Management
+
+**Antes de qualquer tarefa não-trivial (3+ passos):**
+1. Escrever plano em `tasks/todo.md` com itens marcáveis `- [ ]`
+2. Aguardar confirmação antes de implementar
+3. Marcar itens completos `- [x]` conforme avança
+4. Resumo alto nível a cada etapa concluída
+5. Ao final: adicionar seção `## Revisão` no todo.md
+6. Após qualquer correção: atualizar `tasks/lessons.md` com o padrão aprendido
+
+## Diário de Aprendizado
+
+Arquivo: `docs/aprendizado.md` — **não versionado** (já em .gitignore)
+
+**Atualizar automaticamente ao longo da sessão**, organizando por componente:
+`### ml/collaborative`, `### ml/semantic`, `### ml/hybrid`, `### api`, `### data`
+
+Capturar dentro de cada seção:
+- **P/R:** pergunta do usuário + resposta resumida
+- **Decisão:** escolha arquitetural e justificativa
+- **Erro:** o que quebrou + como foi resolvido
+- **Código:** trecho relevante com contexto de uso
+
+Formato de entrada:
+```
+#### [YYYY-MM-DD] Título curto
+**Tipo:** P/R | Decisão | Erro | Código
+**Contexto:** ...
+**Conteúdo:** ...
+```
+```
+
