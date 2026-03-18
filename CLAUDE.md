@@ -7,7 +7,7 @@
 | Camada         | Tecnologia |
 |----------------|------------|
 | API            | FastAPI + uvicorn[standard] |
-| ML — CF        | scikit-surprise ⚠️ **adicionar ao requirements.txt** |
+| ML — CF        | scipy — SVD via `svds`, KNN via cosseno                 |
 | ML — Semântico | sentence-transformers |
 | ML — Tracking  | mlflow |
 | Dados          | pandas + pyarrow + numpy + scipy |
@@ -16,7 +16,7 @@
 | Lint           | flake8 (max-line-length=88, ignore E203,W503) |
 | Testes         | pytest |
 
-> Python 3.11. `scikit-learn` está em requirements.txt mas não é usado para CF — serve só para avaliação. CF usa `scikit-surprise`.
+> Python 3.11. `scikit-learn` está em requirements.txt mas não é usado para CF — serve só para avaliação. CF usa `scipy` (`svds` para SVD, `cosine_similarity` para KNN).
 
 ## Estrutura
 
@@ -29,12 +29,12 @@ smartrec/
 │   ├── processed/        # interactions.parquet, products.parquet, users.parquet
 │   └── embeddings/       # .gitignored
 ├── ml/
-│   ├── collaborative/    # SVDRecommender, KNNRecommender  ← a implementar
-│   ├── semantic/         # ProductEmbedder, SemanticRetriever  ← a implementar
-│   ├── hybrid/           # HybridRecommender (produção)  ← a implementar
-│   └── evaluation/       # precision_at_k, recall_at_k, ndcg_at_k, mrr  ← a implementar
+│   ├── collaborative/    # SVDRecommender, KNNRecommender
+│   ├── semantic/         # ProductEmbedder, SemanticRetriever
+│   ├── hybrid/           # HybridRecommender (produção)
+│   └── evaluation/       # precision_at_k, recall_at_k, ndcg_at_k, mrr
 ├── api/
-│   ├── main.py           # app FastAPI + routers  ← a implementar
+│   ├── main.py           # app FastAPI + routers
 │   ├── routers/          # um arquivo por feature
 │   ├── models/           # schemas Pydantic
 │   └── services/         # lógica de negócio → chama ml/hybrid/
@@ -69,7 +69,7 @@ pytest tests/ --cov=. --cov-report=term-missing
 
 **Testes:** espelham estrutura em `tests/`. Fixtures com `numpy.random.default_rng(42)` — nunca dados reais. MLflow sempre mockado com `unittest.mock.patch`.
 
-**Modelos ML:** interface `fit / predict / evaluate / save / load`. `BaseModel` ainda não existe — criar em `ml/base.py` no primeiro modelo (ver skill `ml-model`). `predict` retorna `list[dict]` com `product_id` e `score ∈ [0, 1]`. Cold start sem exceção.
+**Modelos ML:** interface `fit / predict / evaluate / save / load` definida em `ml/base.py` (`BaseRecommender`). `predict` retorna `list[dict]` com `product_id` e `score ∈ [0, 1]`. Cold start sem exceção.
 
 **API:** router → service → ml/ (router não importa `ml/` diretamente). `ValueError` → 404, `Exception` → 500.
 

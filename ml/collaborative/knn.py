@@ -4,7 +4,7 @@ ml/collaborative/knn.py
 Filtragem colaborativa user-based via similaridade de cosseno.
 
 Nao depende de scikit-surprise: usa scipy para a matriz esparsa e
-sklearn.metrics.pairwise para o calculo eficiente de similaridade.
+sklearn para normalizacao L2 e produto esparso eficiente.
 """
 
 from __future__ import annotations
@@ -18,7 +18,8 @@ import mlflow
 import numpy as np
 import pandas as pd
 from scipy.sparse import csr_matrix
-from sklearn.metrics.pairwise import cosine_similarity
+from sklearn.preprocessing import normalize
+from sklearn.utils.extmath import safe_sparse_dot
 
 from ml.base import BaseRecommender
 from ml.evaluation.metrics import mrr, ndcg_at_k, precision_at_k, recall_at_k
@@ -31,7 +32,8 @@ class KNNRecommender(BaseRecommender):
 
     Constroi uma matriz usuario-item esparsa e calcula a similaridade de
     cosseno entre usuarios para agregar os ratings dos vizinhos como score
-    ponderado.
+    ponderado. A matriz normalizada e cacheada no fit() para evitar
+    renormalizacao a cada chamada de predict().
 
     Parameters
     ----------
@@ -46,6 +48,7 @@ class KNNRecommender(BaseRecommender):
         self._item_index: dict[str, int] = {}
         self._items: list[str] = []
         self._matrix: csr_matrix | None = None
+        self._matrix_norm: csr_matrix | None = None
         self._popular_items: list[str] = []
 
     # ------------------------------------------------------------------
@@ -84,6 +87,9 @@ class KNNRecommender(BaseRecommender):
             shape=(len(users), len(items)),
         )
 
+        # Normaliza a matriz uma vez para reutilizar em predict()
+        self._matrix_norm = normalize(self._matrix, norm="l2", copy=True)
+
         with mlflow.start_run(run_name="knn-fit", nested=True):
             mlflow.log_params({"k": self.k})
 
@@ -119,8 +125,11 @@ class KNNRecommender(BaseRecommender):
         u_idx = self._user_index[user_id]
         user_vec = self._matrix[u_idx]  # (1, n_items)
 
-        # Similaridade de cosseno entre o usuario alvo e todos os outros
-        sims = cosine_similarity(user_vec, self._matrix).flatten()  # (n_users,)
+        # Similaridade de cosseno usando matriz pre-normalizada no fit()
+        user_vec_norm = normalize(user_vec, norm="l2")
+        sims = safe_sparse_dot(
+            user_vec_norm, self._matrix_norm.T, dense_output=True
+        ).flatten()
         sims[u_idx] = -1.0  # exclui o proprio usuario
 
         # Seleciona os k vizinhos mais similares
