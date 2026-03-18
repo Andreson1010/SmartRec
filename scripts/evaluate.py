@@ -315,7 +315,7 @@ def main() -> None:
     )
     parser.add_argument(
         "--strategy",
-        choices=["weighted", "rank_fusion"],
+        choices=["weighted", "rank_fusion", "rerank"],
         default="weighted",
         help="Estratégia de fusão do Hybrid (default: weighted)",
     )

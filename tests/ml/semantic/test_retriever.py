@@ -8,15 +8,14 @@ sem carregar modelo real de Sentence Transformers.
 from __future__ import annotations
 
 from pathlib import Path
-from unittest.mock import patch
 
 import numpy as np
 import pytest
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
 
 N_PRODUCTS = 20
 EMBED_DIM = 16
@@ -121,3 +120,73 @@ class TestQueryByVector:
         results = retriever.query_by_vector(vec, top_k=5)
         scores = [r["score"] for r in results]
         assert scores == sorted(scores, reverse=True)
+
+
+# ---------------------------------------------------------------------------
+# get_embedding
+# ---------------------------------------------------------------------------
+
+
+class TestGetEmbedding:
+    def test_returns_array_for_indexed_product(self, retriever) -> None:
+        result = retriever.get_embedding("p0")
+        assert isinstance(result, np.ndarray)
+        assert result.shape == (EMBED_DIM,)
+
+    def test_returns_none_for_unknown_product(self, retriever) -> None:
+        assert retriever.get_embedding("inexistente") is None
+
+    def test_returns_copy_not_view(self, retriever) -> None:
+        """Modificar o vetor retornado não deve alterar o índice interno."""
+        vec = retriever.get_embedding("p0")
+        original = retriever.get_embedding("p0").copy()
+        vec[:] = 0.0
+        assert np.allclose(retriever.get_embedding("p0"), original)
+
+
+# ---------------------------------------------------------------------------
+# score_items
+# ---------------------------------------------------------------------------
+
+
+class TestScoreItems:
+    def test_returns_dict(self, retriever) -> None:
+        rng = np.random.default_rng(0)
+        vec = rng.standard_normal(EMBED_DIM).astype("float32")
+        vec /= np.linalg.norm(vec)
+        result = retriever.score_items(["p0", "p1", "p2"], vec)
+        assert isinstance(result, dict)
+
+    def test_scores_only_indexed_products(self, retriever) -> None:
+        rng = np.random.default_rng(0)
+        vec = rng.standard_normal(EMBED_DIM).astype("float32")
+        vec /= np.linalg.norm(vec)
+        result = retriever.score_items(["p0", "p1", "inexistente"], vec)
+        assert "p0" in result
+        assert "p1" in result
+        assert "inexistente" not in result
+
+    def test_scores_in_range(self, retriever) -> None:
+        rng = np.random.default_rng(0)
+        vec = rng.standard_normal(EMBED_DIM).astype("float32")
+        vec /= np.linalg.norm(vec)
+        result = retriever.score_items([f"p{i}" for i in range(5)], vec)
+        for score in result.values():
+            assert -1.0 <= score <= 1.0
+
+    def test_empty_list_returns_empty_dict(self, retriever) -> None:
+        rng = np.random.default_rng(0)
+        vec = rng.standard_normal(EMBED_DIM).astype("float32")
+        vec /= np.linalg.norm(vec)
+        assert retriever.score_items([], vec) == {}
+
+    def test_consistent_with_query_by_vector(self, retriever) -> None:
+        """score_items deve concordar com query_by_vector para os mesmos produtos."""
+        rng = np.random.default_rng(7)
+        vec = rng.standard_normal(EMBED_DIM).astype("float32")
+        vec /= np.linalg.norm(vec)
+        all_pids = [f"p{i}" for i in range(N_PRODUCTS)]
+        scores_dict = retriever.score_items(all_pids, vec)
+        results_list = retriever.query_by_vector(vec, top_k=N_PRODUCTS)
+        for item in results_list:
+            assert abs(scores_dict[item["product_id"]] - item["score"]) < 1e-5
