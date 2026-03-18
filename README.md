@@ -154,11 +154,12 @@ smartrec/
 │   └── evaluation/         # precision_at_k, recall_at_k, ndcg_at_k, mrr
 ├── api/
 │   ├── main.py
-│   ├── routers/
-│   ├── models/             # schemas Pydantic
-│   └── services/
+│   ├── routers/            # recommendations.py, products.py
+│   ├── models/             # schemas Pydantic (recommendations, products, health)
+│   └── services/           # recommendations.py, products.py
 ├── scripts/
-│   └── train.py            # pipeline completo de treinamento
+│   ├── train.py            # pipeline completo de treinamento
+│   └── evaluate.py         # avaliação comparativa SVD / KNN / Hybrid
 ├── tests/                  # 200 testes (espelham estrutura do projeto)
 ├── notebooks/
 │   └── 01_eda.ipynb
