@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from datetime import datetime
 from pathlib import Path
 
 from api.models.recommendations import (
@@ -23,6 +24,7 @@ class RecommendationService:
         from ml.hybrid.recommender import HybridRecommender
 
         self._model = HybridRecommender.load(ROOT / "ml" / "hybrid" / "artifacts")
+        self.loaded_at: datetime = datetime.utcnow()
 
     def run(self, payload: RecommendationRequest) -> RecommendationResponse:
         """Executa a recomendação e retorna o response tipado.
