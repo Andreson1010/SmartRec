@@ -91,6 +91,50 @@ class SemanticRetriever:
         scores = self._embeddings @ vector
         return self._top_k_results(scores, top_k)
 
+    def get_embedding(self, product_id: str) -> np.ndarray | None:
+        """Retorna o embedding normalizado de um produto, ou ``None`` se não indexado.
+
+        Parameters
+        ----------
+        product_id:
+            Identificador do produto.
+
+        Returns
+        -------
+        np.ndarray | None
+            Vetor de shape ``(dim,)`` ou ``None``.
+        """
+        idx = self._find_index(product_id)
+        return self._embeddings[idx].copy() if idx is not None else None
+
+    def score_items(
+        self, product_ids: list[str], query_vector: np.ndarray
+    ) -> dict[str, float]:
+        """Pontua produtos específicos contra um vetor de consulta.
+
+        Computa a similaridade de cosseno de todos os embeddings indexados contra
+        ``query_vector`` (uma única multiplicação matricial) e retorna apenas os
+        scores dos ``product_ids`` solicitados.
+
+        Parameters
+        ----------
+        product_ids:
+            Produtos a pontuar. Produtos fora do índice são silenciosamente ignorados.
+        query_vector:
+            Vetor de consulta normalizado (norma L2 = 1), shape ``(dim,)``.
+
+        Returns
+        -------
+        dict[str, float]
+            Mapeamento ``product_id → cosine_similarity`` apenas para produtos indexados.
+        """
+        all_scores = self._embeddings @ query_vector
+        pid_to_score = {
+            str(self._product_ids[i]): float(all_scores[i])
+            for i in range(len(self._product_ids))
+        }
+        return {pid: pid_to_score[pid] for pid in product_ids if pid in pid_to_score}
+
     def _top_k_results(self, scores: np.ndarray, top_k: int) -> list[dict[str, Any]]:
         """Extrai os top-K índices e monta a lista de resultado."""
         top_k = min(top_k, len(scores))

@@ -20,7 +20,7 @@ from ml.semantic.retriever import SemanticRetriever
 logger = logging.getLogger(__name__)
 
 ROOT = Path(__file__).resolve().parent.parent.parent
-FusionStrategy = Literal["weighted", "rank_fusion"]
+FusionStrategy = Literal["weighted", "rank_fusion", "rerank"]
 
 
 class HybridRecommender:
@@ -45,7 +45,7 @@ class HybridRecommender:
     def __init__(
         self,
         alpha: float = 0.6,
-        strategy: FusionStrategy = "weighted",
+        strategy: FusionStrategy = "rerank",
         cf_model_path: Path = ROOT / "ml" / "collaborative" / "artifacts",
         embeddings_dir: Path = ROOT / "data" / "embeddings",
         version: str = "1.0.0",
@@ -84,8 +84,14 @@ class HybridRecommender:
         """
         cf_recs = self._cf.predict(user_id, top_k=top_k * 3)
 
-        # Semente semântica = top item do CF
-        seed_item = cf_recs[0]["product_id"] if cf_recs else None
+        if self.strategy == "rerank":
+            return self._semantic_rerank(cf_recs, top_k)
+
+        # Semente semântica = primeiro item do CF que esteja no índice de embeddings
+        seed_item = next(
+            (r["product_id"] for r in cf_recs if r["product_id"] in self._indexed_pids),
+            None,
+        )
         sem_recs = (
             self._semantic.query_by_product(seed_item, top_k=top_k * 3)
             if seed_item
@@ -95,6 +101,93 @@ class HybridRecommender:
         if self.strategy == "weighted":
             return self._weighted_fusion(cf_recs, sem_recs, top_k)
         return self._rank_fusion(cf_recs, sem_recs, top_k)
+
+    # ------------------------------------------------------------------
+    def _build_user_vector(
+        self, cf_recs: list[dict], n_seed: int = 5
+    ) -> np.ndarray | None:
+        """Constrói o vetor de perfil do usuário a partir dos top itens do CF.
+
+        Usa a média normalizada dos embeddings dos primeiros ``n_seed`` itens do
+        CF que estejam no índice semântico como proxy do gosto do usuário.
+
+        Parameters
+        ----------
+        cf_recs:
+            Recomendações do CF ordenadas por score decrescente.
+        n_seed:
+            Máximo de itens usados para construir o vetor.
+
+        Returns
+        -------
+        np.ndarray | None
+            Vetor normalizado de shape ``(dim,)`` ou ``None`` se nenhum item
+            do CF estiver indexado.
+        """
+        vecs = []
+        for r in cf_recs:
+            if r["product_id"] in self._indexed_pids:
+                vec = self._semantic.get_embedding(r["product_id"])
+                if vec is not None:
+                    vecs.append(vec)
+            if len(vecs) >= n_seed:
+                break
+
+        if not vecs:
+            return None
+
+        user_vec = np.stack(vecs).mean(axis=0)
+        norm = np.linalg.norm(user_vec)
+        return user_vec / norm if norm > 1e-8 else None
+
+    def _semantic_rerank(self, cf_recs: list[dict], top_k: int) -> list[dict[str, Any]]:
+        """Re-rankeia candidatos do CF usando similaridade semântica.
+
+        O CF gera todos os candidatos; o semântico apenas reordena — nenhum
+        produto novo é introduzido. Isso preserva o alcance do CF (100% dos
+        produtos) enquanto a semântica melhora a ordenação dos que têm embedding.
+
+        Produtos sem embedding mantêm seu score de CF intacto.
+
+        Parameters
+        ----------
+        cf_recs:
+            Candidatos do CF com scores em ``[0, 1]``.
+        top_k:
+            Número de recomendações a retornar.
+
+        Returns
+        -------
+        list[dict]
+            Lista de ``{"product_id": str, "score": float}`` ordenada por
+            score decrescente.
+        """
+        user_vector = self._build_user_vector(cf_recs)
+
+        if user_vector is None:
+            # Sem embedding disponível — retorna CF puro
+            return [
+                {"product_id": r["product_id"], "score": round(r["score"], 4)}
+                for r in cf_recs[:top_k]
+            ]
+
+        pids = [r["product_id"] for r in cf_recs]
+        sem_scores = self._semantic.score_items(pids, user_vector)
+
+        scores: dict[str, float] = {}
+        for item in cf_recs:
+            pid = item["product_id"]
+            sem_score = sem_scores.get(pid, 0.0)
+            if sem_score > 0:
+                scores[pid] = self.alpha * item["score"] + (1 - self.alpha) * sem_score
+            else:
+                scores[pid] = item["score"]
+
+        ranked = sorted(scores.items(), key=lambda x: x[1], reverse=True)
+        return [
+            {"product_id": pid, "score": round(score, 4)}
+            for pid, score in ranked[:top_k]
+        ]
 
     # ------------------------------------------------------------------
     def _weighted_fusion(

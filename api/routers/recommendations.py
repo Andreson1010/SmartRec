@@ -5,13 +5,18 @@ from __future__ import annotations
 import logging
 import time
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 
 from api.models.recommendations import RecommendationRequest, RecommendationResponse
 from api.services.recommendations import RecommendationService
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/recommendations", tags=["recommendations"])
+
+
+def get_rec_service(request: Request) -> RecommendationService:
+    """Retorna o singleton de RecommendationService armazenado em app.state."""
+    return request.app.state.rec_service
 
 
 @router.post(
@@ -21,7 +26,7 @@ router = APIRouter(prefix="/recommendations", tags=["recommendations"])
 )
 async def get_recommendations(
     payload: RecommendationRequest,
-    service: RecommendationService = Depends(),
+    service: RecommendationService = Depends(get_rec_service),
 ) -> RecommendationResponse:
     """Retorna os top-K produtos recomendados para o usuário.
 
