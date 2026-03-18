@@ -45,7 +45,7 @@ class HybridRecommender:
     def __init__(
         self,
         alpha: float = 0.6,
-        strategy: FusionStrategy = "weighted",
+        strategy: FusionStrategy = "rerank",
         cf_model_path: Path = ROOT / "ml" / "collaborative" / "artifacts",
         embeddings_dir: Path = ROOT / "data" / "embeddings",
         version: str = "1.0.0",
@@ -140,9 +140,7 @@ class HybridRecommender:
         norm = np.linalg.norm(user_vec)
         return user_vec / norm if norm > 1e-8 else None
 
-    def _semantic_rerank(
-        self, cf_recs: list[dict], top_k: int
-    ) -> list[dict[str, Any]]:
+    def _semantic_rerank(self, cf_recs: list[dict], top_k: int) -> list[dict[str, Any]]:
         """Re-rankeia candidatos do CF usando similaridade semântica.
 
         O CF gera todos os candidatos; o semântico apenas reordena — nenhum

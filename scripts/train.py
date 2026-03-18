@@ -16,7 +16,7 @@ Etapas
 Uso
 ---
 python -m scripts.train
-python -m scripts.train --n-factors 100 --strategy rank_fusion --skip-embeddings
+python -m scripts.train --n-factors 100 --strategy rerank --skip-embeddings
 """
 
 from __future__ import annotations
@@ -173,7 +173,7 @@ def _maybe_register(
 
 def train(
     n_factors: int = 50,
-    strategy: str = "weighted",
+    strategy: str = "rerank",
     skip_embeddings: bool = False,
     experiment_name: str = "smartrec/hybrid",
     register: bool = True,
@@ -185,7 +185,7 @@ def train(
     n_factors:
         Número de fatores latentes do SVD.
     strategy:
-        Estratégia de fusão do Hybrid (``"weighted"`` ou ``"rank_fusion"``).
+        Estratégia de fusão do Hybrid (``"weighted"``, ``"rank_fusion"`` ou ``"rerank"``).
     skip_embeddings:
         Se ``True``, pula a geração de embeddings (reutiliza os já salvos).
     experiment_name:
@@ -243,9 +243,7 @@ def train(
         svd.save(CF_ARTIFACTS)
 
         svd_val_metrics = svd.evaluate(val_df)
-        mlflow.log_metrics(
-            {f"svd_val_{k}": v for k, v in svd_val_metrics.items()}
-        )
+        mlflow.log_metrics({f"svd_val_{k}": v for k, v in svd_val_metrics.items()})
         logger.info("SVD val: %s", svd_val_metrics)
 
         # --- Embeddings ---
@@ -286,9 +284,7 @@ def train(
         mlflow.log_artifact(
             str(HYBRID_ARTIFACTS / "hybrid.pkl"), artifact_path="hybrid_model"
         )
-        mlflow.log_artifact(
-            str(CF_ARTIFACTS / "svd.pkl"), artifact_path="svd_model"
-        )
+        mlflow.log_artifact(str(CF_ARTIFACTS / "svd.pkl"), artifact_path="svd_model")
 
         # --- Registrar no Model Registry ---
         if register:
@@ -319,9 +315,9 @@ def main() -> None:
     )
     parser.add_argument(
         "--strategy",
-        choices=["weighted", "rank_fusion"],
-        default="weighted",
-        help="Estratégia de fusão do Hybrid (default: weighted)",
+        choices=["weighted", "rank_fusion", "rerank"],
+        default="rerank",
+        help="Estratégia de fusão do Hybrid (default: rerank)",
     )
     parser.add_argument(
         "--skip-embeddings",
