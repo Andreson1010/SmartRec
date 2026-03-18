@@ -157,11 +157,16 @@ def _maybe_register(
         Valores mínimos aceitáveis por métrica.
     """
     if all(metrics.get(m, 0.0) >= v for m, v in threshold.items()):
-        mlflow.register_model(
-            model_uri=f"runs:/{run_id}/hybrid_model",
-            name="smartrec-hybrid",
-        )
-        logger.info("Modelo registrado no MLflow Model Registry como smartrec-hybrid")
+        uri = f"runs:/{run_id}/hybrid_model/hybrid.pkl"
+        try:
+            mlflow.register_model(model_uri=uri, name="smartrec-hybrid")
+            logger.info(
+                "Modelo registrado no MLflow Model Registry como smartrec-hybrid"
+            )
+        except Exception as exc:
+            logger.warning(
+                "Registro no Model Registry falhou (non-fatal): %s", exc
+            )
     else:
         logger.info("Métricas abaixo do threshold — modelo não registrado")
 
@@ -185,7 +190,8 @@ def train(
     n_factors:
         Número de fatores latentes do SVD.
     strategy:
-        Estratégia de fusão do Hybrid (``"weighted"``, ``"rank_fusion"`` ou ``"rerank"``).
+        Estratégia de fusão do Hybrid
+        (``"weighted"``, ``"rank_fusion"`` ou ``"rerank"``).
     skip_embeddings:
         Se ``True``, pula a geração de embeddings (reutiliza os já salvos).
     experiment_name:

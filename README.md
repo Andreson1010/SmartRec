@@ -11,7 +11,7 @@ Sistema de recomendação híbrido que combina **filtragem colaborativa** (SVD +
 
 ## Como funciona
 
-```
+```text
 data/raw/ (Amazon Reviews 2023 — 5.4M interações)
     │
     └─► data/processing.py ──► interactions.parquet
@@ -129,9 +129,12 @@ curl -X POST http://localhost:8000/recommendations/ \
 
 | Modelo | Precision@10 | Recall@10 | NDCG@10 | MRR |
 | ------ | :----------: | :-------: | :-----: | :-: |
-| SVD | — | — | — | — |
-| KNN | — | — | — | — |
-| **Híbrido (rerank)** | — | — | — | — |
+| SVD (val) | 0.0101 | 0.0309 | 0.0208 | 0.0257 |
+| **Híbrido rerank (test)** | 0.0078 | 0.0236 | 0.0160 | 0.0202 |
+
+> Dataset: Amazon Reviews 2023 — Electronics. 539k interações de treino, 9.321 produtos com
+> embedding semântico de 14.795 únicos. Métricas baixas são esperadas em CF esparso com alta
+> dimensionalidade de usuários (86k) e cold-start frequente.
 
 ---
 
