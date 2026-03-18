@@ -7,16 +7,17 @@ Testes para HybridRecommender — SVDRecommender e SemanticRetriever mockados.
 from __future__ import annotations
 
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import numpy as np
 import pandas as pd
 import pytest
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+EMBED_DIM = 16
 
 
 def _make_recs(ids: list[str], scores: list[float]) -> list[dict]:
@@ -25,6 +26,15 @@ def _make_recs(ids: list[str], scores: list[float]) -> list[dict]:
 
 CF_RECS = _make_recs(["p1", "p2", "p3", "p4", "p5"], [0.9, 0.8, 0.7, 0.6, 0.5])
 SEM_RECS = _make_recs(["p3", "p4", "p6", "p7", "p8"], [0.95, 0.85, 0.75, 0.65, 0.55])
+
+
+def _fake_embedding(product_id: str) -> np.ndarray | None:
+    """Embedding normalizado determinístico, ou None para ids desconhecidos."""
+    if product_id.startswith("p") and product_id[1:].isdigit():
+        rng = np.random.default_rng(int(product_id[1:]))
+        vec = rng.standard_normal(EMBED_DIM).astype("float32")
+        return vec / np.linalg.norm(vec)
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -42,6 +52,8 @@ def hybrid():
 
     mock_semantic = MagicMock()
     mock_semantic.query_by_product.return_value = SEM_RECS
+    mock_semantic.query_by_vector.return_value = SEM_RECS
+    mock_semantic.get_embedding.side_effect = _fake_embedding
 
     rec = HybridRecommender.__new__(HybridRecommender)
     rec.alpha = 0.6
@@ -49,6 +61,7 @@ def hybrid():
     rec.version = "1.0.0"
     rec._cf = mock_cf
     rec._semantic = mock_semantic
+    rec._user_items = {"u1": ["p1", "p2", "p3"]}
     return rec
 
 
@@ -80,9 +93,18 @@ class TestPredictWeighted:
         hybrid.predict("u1", top_k=4)
         hybrid._cf.predict.assert_called_with("u1", top_k=12)
 
-    def test_semantic_seeded_with_top_cf_item(self, hybrid) -> None:
+    def test_semantic_uses_query_by_vector_with_history(self, hybrid) -> None:
+        """Com histórico disponível, deve usar query_by_vector."""
         hybrid.predict("u1", top_k=4)
-        hybrid._semantic.query_by_product.assert_called_with("p1", top_k=12)
+        hybrid._semantic.query_by_vector.assert_called()
+        hybrid._semantic.query_by_product.assert_not_called()
+
+    def test_semantic_fallback_to_seed_when_no_history(self, hybrid) -> None:
+        """Sem histórico, faz fallback para top item do CF como semente."""
+        hybrid._user_items = {}
+        hybrid._semantic.get_embedding.return_value = None
+        hybrid.predict("unknown_user", top_k=4)
+        hybrid._semantic.query_by_product.assert_called()
 
 
 # ---------------------------------------------------------------------------
@@ -119,18 +141,6 @@ class TestWeightedFusion:
         """p3 e p4 aparecem em CF e semântico — devem ter score maior."""
         result = hybrid.predict("u1", top_k=8)
         ids = [r["product_id"] for r in result]
-        overlap = {"p3", "p4"}
-        only_cf = {"p1", "p2"}
-
-        scores = {r["product_id"]: r["score"] for r in result}
-        for pid in overlap:
-            if pid in scores and only_cf & scores.keys():
-                for cf_only in only_cf:
-                    if cf_only in scores:
-                        # item em ambas as listas pode ter score maior que item só em CF
-                        # (depende dos valores, mas p3 CF=0.7 + sem=0.95 > p1 CF=0.9)
-                        pass  # verificação qualitativa apenas
-
         assert len(ids) > 0  # sanity check
 
     def test_alpha_zero_ignores_cf(self, hybrid) -> None:
@@ -146,8 +156,6 @@ class TestWeightedFusion:
     def test_alpha_one_ignores_semantic(self, hybrid) -> None:
         hybrid.alpha = 1.0
         result = hybrid._weighted_fusion(CF_RECS, SEM_RECS, top_k=5)
-        ids = {r["product_id"] for r in result}
-        # com alpha=1, somente itens do CF têm score > 0
         cf_ids = {r["product_id"] for r in CF_RECS}
         for item in result:
             if item["product_id"] not in cf_ids:
@@ -178,14 +186,43 @@ class TestRankFusion:
 class TestColdStart:
     def test_empty_cf_recs_returns_empty_result(self, hybrid) -> None:
         hybrid._cf.predict.return_value = []
+        hybrid._semantic.query_by_vector.return_value = []
         hybrid._semantic.query_by_product.return_value = []
         result = hybrid.predict("cold_user", top_k=5)
         assert isinstance(result, list)
 
-    def test_semantic_not_called_when_no_seed(self, hybrid) -> None:
+    def test_no_history_and_no_cf_skips_semantic(self, hybrid) -> None:
+        """Sem CF recs e sem histórico, semântico não é chamado."""
+        hybrid._user_items = {}
         hybrid._cf.predict.return_value = []
         hybrid.predict("cold_user", top_k=5)
         hybrid._semantic.query_by_product.assert_not_called()
+        hybrid._semantic.query_by_vector.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# _query_user_history
+# ---------------------------------------------------------------------------
+
+
+class TestQueryUserHistory:
+    def test_uses_mean_embedding_when_history_available(self, hybrid) -> None:
+        """Histórico com embeddings válidos deve acionar query_by_vector."""
+        hybrid._query_user_history("u1", top_k=5, cf_recs=CF_RECS)
+        hybrid._semantic.query_by_vector.assert_called_once()
+        hybrid._semantic.query_by_product.assert_not_called()
+
+    def test_fallback_when_no_embeddings_in_history(self, hybrid) -> None:
+        """Se nenhum produto do histórico tem embedding, usa seed CF."""
+        hybrid._user_items = {"u_no_emb": ["unknown1", "unknown2"]}
+        hybrid._semantic.get_embedding.return_value = None
+        hybrid._query_user_history("u_no_emb", top_k=5, cf_recs=CF_RECS)
+        hybrid._semantic.query_by_product.assert_called_once_with("p1", top_k=5)
+
+    def test_fallback_when_user_not_in_history(self, hybrid) -> None:
+        """Usuário sem histórico registrado usa seed CF."""
+        hybrid._query_user_history("new_user", top_k=5, cf_recs=CF_RECS)
+        hybrid._semantic.query_by_product.assert_called_once_with("p1", top_k=5)
 
 
 # ---------------------------------------------------------------------------
@@ -233,6 +270,7 @@ class TestSaveLoad:
         rec.version = "2.0.0"
         rec._cf = None
         rec._semantic = None
+        rec._user_items = {}
         return rec
 
     def test_roundtrip(self, tmp_path: Path) -> None:
@@ -249,3 +287,12 @@ class TestSaveLoad:
     def test_save_creates_file(self, tmp_path: Path) -> None:
         self._picklable().save(tmp_path)
         assert (tmp_path / "hybrid.pkl").exists()
+
+    def test_user_items_persisted(self, tmp_path: Path) -> None:
+        from ml.hybrid.recommender import HybridRecommender
+
+        rec = self._picklable()
+        rec._user_items = {"u1": ["p1", "p2"]}
+        rec.save(tmp_path)
+        loaded = HybridRecommender.load(tmp_path)
+        assert loaded._user_items == {"u1": ["p1", "p2"]}

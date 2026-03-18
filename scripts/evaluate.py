@@ -166,7 +166,7 @@ def _print_table(results: dict[str, dict[str, float]]) -> None:
 def evaluate(
     n_factors: int = 50,
     knn_k: int = 20,
-    strategy: str = "weighted",
+    strategy: str = "rank_fusion",
     skip_embeddings: bool = False,
     experiment_name: str = "smartrec/evaluation",
 ) -> dict[str, dict[str, float]]:
@@ -267,6 +267,7 @@ def evaluate(
             strategy=strategy,
             cf_model_path=CF_ARTIFACTS,
             embeddings_dir=EMBEDDINGS_DIR,
+            train_interactions=train_df,
         )
         best_alpha = hybrid.tune_alpha(val_df)
         mlflow.log_param("best_alpha", best_alpha)
@@ -316,8 +317,8 @@ def main() -> None:
     parser.add_argument(
         "--strategy",
         choices=["weighted", "rank_fusion"],
-        default="weighted",
-        help="Estratégia de fusão do Hybrid (default: weighted)",
+        default="rank_fusion",
+        help="Estratégia de fusão do Hybrid (default: rank_fusion)",
     )
     parser.add_argument(
         "--skip-embeddings",

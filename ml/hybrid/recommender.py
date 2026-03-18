@@ -17,6 +17,8 @@ import pandas as pd
 from ml.collaborative.svd import SVDRecommender
 from ml.semantic.retriever import SemanticRetriever
 
+_EMPTY_USER_ITEMS: dict[str, list[str]] = {}
+
 logger = logging.getLogger(__name__)
 
 ROOT = Path(__file__).resolve().parent.parent.parent
@@ -45,16 +47,26 @@ class HybridRecommender:
     def __init__(
         self,
         alpha: float = 0.6,
-        strategy: FusionStrategy = "weighted",
+        strategy: FusionStrategy = "rank_fusion",
         cf_model_path: Path = ROOT / "ml" / "collaborative" / "artifacts",
         embeddings_dir: Path = ROOT / "data" / "embeddings",
         version: str = "1.0.0",
+        train_interactions: pd.DataFrame | None = None,
     ) -> None:
         self.alpha = alpha
         self.strategy = strategy
         self.version = version
         self._cf: SVDRecommender = SVDRecommender.load(cf_model_path)
         self._semantic: SemanticRetriever = SemanticRetriever(embeddings_dir)
+        # Mapeia user_id → lista de product_ids do histórico de treino
+        if train_interactions is not None:
+            self._user_items: dict[str, list[str]] = (
+                train_interactions.groupby("user_id")["product_id"]
+                .apply(list)
+                .to_dict()
+            )
+        else:
+            self._user_items = _EMPTY_USER_ITEMS
 
     # ------------------------------------------------------------------
     def predict(self, user_id: str, top_k: int = 10) -> list[dict[str, Any]]:
@@ -81,17 +93,62 @@ class HybridRecommender:
         """
         cf_recs = self._cf.predict(user_id, top_k=top_k * 3)
 
-        # Semente semântica = top item do CF
-        seed_item = cf_recs[0]["product_id"] if cf_recs else None
-        sem_recs = (
-            self._semantic.query_by_product(seed_item, top_k=top_k * 3)
-            if seed_item
-            else []
-        )
+        # Semente semântica: média dos embeddings do histórico do usuário.
+        # Captura preferência real do usuário em vez de similaridade de
+        # conteúdo com um único item semente.
+        sem_recs = self._query_user_history(user_id, top_k=top_k * 3, cf_recs=cf_recs)
 
         if self.strategy == "weighted":
             return self._weighted_fusion(cf_recs, sem_recs, top_k)
         return self._rank_fusion(cf_recs, sem_recs, top_k)
+
+    # ------------------------------------------------------------------
+    def _query_user_history(
+        self,
+        user_id: str,
+        top_k: int,
+        cf_recs: list[dict],
+    ) -> list[dict]:
+        """Consulta semântica via média dos embeddings do histórico do usuário.
+
+        Tenta construir um vetor de consulta como média (normalizada) dos
+        embeddings de todos os produtos avaliados pelo usuário no treino.
+        Se nenhum produto do histórico estiver indexado, faz fallback para
+        o top item do CF como semente (comportamento anterior).
+
+        Parameters
+        ----------
+        user_id:
+            Identificador do usuário.
+        top_k:
+            Número de resultados semânticos a buscar.
+        cf_recs:
+            Recomendações do modelo colaborativo (usado no fallback).
+
+        Returns
+        -------
+        list[dict]
+            Lista de ``{"product_id": str, "score": float}``.
+        """
+        history = self._user_items.get(user_id, [])
+        if history:
+            vecs = [
+                self._semantic.get_embedding(pid)
+                for pid in history
+            ]
+            vecs = [v for v in vecs if v is not None]
+            if vecs:
+                mean_vec = np.mean(vecs, axis=0).astype("float32")
+                norm = np.linalg.norm(mean_vec)
+                if norm > 0:
+                    mean_vec /= norm
+                    return self._semantic.query_by_vector(mean_vec, top_k=top_k)
+
+        # Fallback: top item do CF como semente
+        seed_item = cf_recs[0]["product_id"] if cf_recs else None
+        if seed_item:
+            return self._semantic.query_by_product(seed_item, top_k=top_k)
+        return []
 
     # ------------------------------------------------------------------
     def _weighted_fusion(

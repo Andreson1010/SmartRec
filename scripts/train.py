@@ -173,7 +173,7 @@ def _maybe_register(
 
 def train(
     n_factors: int = 50,
-    strategy: str = "weighted",
+    strategy: str = "rank_fusion",
     skip_embeddings: bool = False,
     experiment_name: str = "smartrec/hybrid",
     register: bool = True,
@@ -243,9 +243,7 @@ def train(
         svd.save(CF_ARTIFACTS)
 
         svd_val_metrics = svd.evaluate(val_df)
-        mlflow.log_metrics(
-            {f"svd_val_{k}": v for k, v in svd_val_metrics.items()}
-        )
+        mlflow.log_metrics({f"svd_val_{k}": v for k, v in svd_val_metrics.items()})
         logger.info("SVD val: %s", svd_val_metrics)
 
         # --- Embeddings ---
@@ -269,6 +267,7 @@ def train(
             strategy=strategy,
             cf_model_path=CF_ARTIFACTS,
             embeddings_dir=EMBEDDINGS_DIR,
+            train_interactions=train_df,
         )
         best_alpha = hybrid.tune_alpha(val_df)
         mlflow.log_param("best_alpha", best_alpha)
@@ -286,9 +285,7 @@ def train(
         mlflow.log_artifact(
             str(HYBRID_ARTIFACTS / "hybrid.pkl"), artifact_path="hybrid_model"
         )
-        mlflow.log_artifact(
-            str(CF_ARTIFACTS / "svd.pkl"), artifact_path="svd_model"
-        )
+        mlflow.log_artifact(str(CF_ARTIFACTS / "svd.pkl"), artifact_path="svd_model")
 
         # --- Registrar no Model Registry ---
         if register:
@@ -320,8 +317,8 @@ def main() -> None:
     parser.add_argument(
         "--strategy",
         choices=["weighted", "rank_fusion"],
-        default="weighted",
-        help="Estratégia de fusão do Hybrid (default: weighted)",
+        default="rank_fusion",
+        help="Estratégia de fusão do Hybrid (default: rank_fusion)",
     )
     parser.add_argument(
         "--skip-embeddings",

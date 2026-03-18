@@ -91,6 +91,24 @@ class SemanticRetriever:
         scores = self._embeddings @ vector
         return self._top_k_results(scores, top_k)
 
+    def get_embedding(self, product_id: str) -> np.ndarray | None:
+        """Retorna o vetor de embedding de um produto ou ``None`` se não indexado.
+
+        Parameters
+        ----------
+        product_id:
+            Identificador do produto a buscar.
+
+        Returns
+        -------
+        np.ndarray | None
+            Vetor normalizado shape ``(dim,)``, ou ``None`` se não encontrado.
+        """
+        idx = self._find_index(product_id)
+        if idx is None:
+            return None
+        return self._embeddings[idx]
+
     def _top_k_results(self, scores: np.ndarray, top_k: int) -> list[dict[str, Any]]:
         """Extrai os top-K índices e monta a lista de resultado."""
         top_k = min(top_k, len(scores))

@@ -8,11 +8,9 @@ sem carregar modelo real de Sentence Transformers.
 from __future__ import annotations
 
 from pathlib import Path
-from unittest.mock import patch
 
 import numpy as np
 import pytest
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -121,3 +119,25 @@ class TestQueryByVector:
         results = retriever.query_by_vector(vec, top_k=5)
         scores = [r["score"] for r in results]
         assert scores == sorted(scores, reverse=True)
+
+
+# ---------------------------------------------------------------------------
+# get_embedding
+# ---------------------------------------------------------------------------
+
+
+class TestGetEmbedding:
+    def test_known_product_returns_array(self, retriever) -> None:
+        result = retriever.get_embedding("p0")
+        assert result is not None
+        assert isinstance(result, np.ndarray)
+        assert result.shape == (EMBED_DIM,)
+
+    def test_unknown_product_returns_none(self, retriever) -> None:
+        result = retriever.get_embedding("produto_inexistente")
+        assert result is None
+
+    def test_returned_vector_is_normalized(self, retriever) -> None:
+        vec = retriever.get_embedding("p0")
+        assert vec is not None
+        assert abs(np.linalg.norm(vec) - 1.0) < 1e-5
