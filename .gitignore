@@ -32,6 +32,12 @@ data/embeddings/*
 # MLflow
 mlflow/mlruns/
 mlflow/artifacts/
+mlruns/
+mlflow.db
+
+# Claude Code
+agents.md
+.claude/
 
 # Models
 *.pkl
