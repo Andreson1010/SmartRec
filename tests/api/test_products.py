@@ -32,14 +32,16 @@ MOCK_RESPONSE = SimilarProductsResponse(
 
 @pytest.fixture()
 def client():
-    """TestClient com ProductService mockado."""
+    """TestClient com ProductService mockado e autenticação desativada."""
     from api.main import app
     from api.routers.products import ProductService
+    from api.security import verify_api_key
 
     mock_service = MagicMock(spec=ProductService)
     mock_service.find_similar.return_value = MOCK_RESPONSE
 
     app.dependency_overrides[ProductService] = lambda: mock_service
+    app.dependency_overrides[verify_api_key] = lambda: "test-key"
     yield TestClient(app)
     app.dependency_overrides.clear()
 
@@ -76,10 +78,12 @@ class TestGetSimilarProducts:
         """Verifica que top_k da query string é repassado ao service."""
         from api.main import app
         from api.routers.products import ProductService
+        from api.security import verify_api_key
 
         mock_service = MagicMock(spec=ProductService)
         mock_service.find_similar.return_value = MOCK_RESPONSE
         app.dependency_overrides[ProductService] = lambda: mock_service
+        app.dependency_overrides[verify_api_key] = lambda: "test-key"
 
         TestClient(app).get("/products/p1/similar?top_k=5")
         mock_service.find_similar.assert_called_once_with("p1", top_k=5)
@@ -90,10 +94,12 @@ class TestGetSimilarProducts:
         """Sem top_k, o padrão é 10."""
         from api.main import app
         from api.routers.products import ProductService
+        from api.security import verify_api_key
 
         mock_service = MagicMock(spec=ProductService)
         mock_service.find_similar.return_value = MOCK_RESPONSE
         app.dependency_overrides[ProductService] = lambda: mock_service
+        app.dependency_overrides[verify_api_key] = lambda: "test-key"
 
         TestClient(app).get("/products/p1/similar")
         mock_service.find_similar.assert_called_once_with("p1", top_k=10)
@@ -125,10 +131,12 @@ class TestServiceErrors:
     def test_value_error_returns_404(self, client) -> None:
         from api.main import app
         from api.routers.products import ProductService
+        from api.security import verify_api_key
 
         mock_service = MagicMock(spec=ProductService)
         mock_service.find_similar.side_effect = ValueError("produto não encontrado")
         app.dependency_overrides[ProductService] = lambda: mock_service
+        app.dependency_overrides[verify_api_key] = lambda: "test-key"
 
         resp = client.get("/products/p_bad/similar")
         assert resp.status_code == 404
@@ -139,10 +147,12 @@ class TestServiceErrors:
     def test_unexpected_error_returns_500(self, client) -> None:
         from api.main import app
         from api.routers.products import ProductService
+        from api.security import verify_api_key
 
         mock_service = MagicMock(spec=ProductService)
         mock_service.find_similar.side_effect = RuntimeError("falha interna")
         app.dependency_overrides[ProductService] = lambda: mock_service
+        app.dependency_overrides[verify_api_key] = lambda: "test-key"
 
         resp = client.get("/products/p1/similar")
         assert resp.status_code == 500
