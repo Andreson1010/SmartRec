@@ -188,7 +188,7 @@ class TestSVDRecommenderPersistence:
         self, trained_model: SVDRecommender, tmp_path: Path
     ) -> None:
         trained_model.save(tmp_path / "model")
-        assert (tmp_path / "model" / "svd.pkl").exists()
+        assert (tmp_path / "model" / "svd.joblib").exists()
 
     def test_load_returns_fitted_model(
         self, trained_model: SVDRecommender, tmp_path: Path

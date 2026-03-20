@@ -50,12 +50,14 @@ def _make_mock_service():
 
 @pytest.fixture()
 def client():
-    """TestClient com app.state.rec_service mockado."""
+    """TestClient com app.state.rec_service mockado e autenticação desativada."""
     from api.main import app
     from api.routers.recommendations import get_rec_service
+    from api.security import verify_api_key
 
     mock_service = _make_mock_service()
     app.dependency_overrides[get_rec_service] = lambda: mock_service
+    app.dependency_overrides[verify_api_key] = lambda: "test-key"
     app.state.rec_service = mock_service
     app.state.started_at = datetime(2026, 1, 1, 0, 0, 0, tzinfo=UTC)
     yield TestClient(app)
@@ -128,10 +130,12 @@ class TestServiceErrors:
     def test_value_error_returns_404(self, client) -> None:
         from api.main import app
         from api.routers.recommendations import get_rec_service
+        from api.security import verify_api_key
 
         mock_service = _make_mock_service()
         mock_service.run.side_effect = ValueError("usuário não encontrado")
         app.dependency_overrides[get_rec_service] = lambda: mock_service
+        app.dependency_overrides[verify_api_key] = lambda: "test-key"
 
         resp = client.post("/recommendations/", json={"user_id": "u_bad"})
         assert resp.status_code == 404
@@ -142,10 +146,12 @@ class TestServiceErrors:
     def test_unexpected_error_returns_500(self, client) -> None:
         from api.main import app
         from api.routers.recommendations import get_rec_service
+        from api.security import verify_api_key
 
         mock_service = _make_mock_service()
         mock_service.run.side_effect = RuntimeError("falha interna")
         app.dependency_overrides[get_rec_service] = lambda: mock_service
+        app.dependency_overrides[verify_api_key] = lambda: "test-key"
 
         resp = client.post("/recommendations/", json={"user_id": "u1"})
         assert resp.status_code == 500

@@ -140,9 +140,7 @@ class TestPredictRerank:
         fake_vec = np.ones(4, dtype="float32")
         fake_vec /= np.linalg.norm(fake_vec)
         hybrid._semantic.get_embedding = MagicMock(return_value=fake_vec)
-        hybrid._semantic.score_items = MagicMock(
-            return_value={"p3": 0.9, "p4": 0.8}
-        )
+        hybrid._semantic.score_items = MagicMock(return_value={"p3": 0.9, "p4": 0.8})
         scores = [r["score"] for r in hybrid.predict("u1", top_k=5)]
         assert scores == sorted(scores, reverse=True)
 
@@ -350,4 +348,4 @@ class TestSaveLoad:
 
     def test_save_creates_file(self, tmp_path: Path) -> None:
         self._picklable().save(tmp_path)
-        assert (tmp_path / "hybrid.pkl").exists()
+        assert (tmp_path / "hybrid.joblib").exists()
