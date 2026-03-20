@@ -7,8 +7,9 @@ HybridRecommender: combina filtragem colaborativa (SVD) com busca semântica.
 from __future__ import annotations
 
 import logging
-import pickle
 from pathlib import Path
+
+import joblib
 from typing import Any, Literal
 
 import numpy as np
@@ -317,8 +318,7 @@ class HybridRecommender:
         """
         path = Path(path)
         path.mkdir(parents=True, exist_ok=True)
-        with open(path / "hybrid.pkl", "wb") as f:
-            pickle.dump(self, f)
+        joblib.dump(self, path / "hybrid.joblib")
         logger.info("HybridRecommender salvo em %s", path)
 
     @classmethod
@@ -330,7 +330,6 @@ class HybridRecommender:
         path:
             Diretório onde ``hybrid.pkl`` foi salvo por :meth:`save`.
         """
-        with open(Path(path) / "hybrid.pkl", "rb") as f:
-            model = pickle.load(f)
+        model = joblib.load(Path(path) / "hybrid.joblib")
         logger.info("HybridRecommender carregado de %s", path)
         return model

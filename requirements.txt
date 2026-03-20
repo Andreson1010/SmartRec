@@ -1,19 +1,25 @@
-fastapi
-uvicorn[standard]
-pandas
-pyarrow
-numpy
-scikit-learn
-sentence-transformers
-scipy
-mlflow
-pydantic
-python-dotenv
-pytest
-pytest-cov
-black
-flake8
+# Produção
+fastapi==0.115.8
+uvicorn[standard]==0.34.0
+pandas==2.2.3
+pyarrow==19.0.0
+numpy==1.26.4
+scikit-learn==1.6.1
+sentence-transformers==3.4.1
+scipy==1.13.1
+mlflow==3.10.1
+pydantic==2.10.6
+python-dotenv==1.0.1
+joblib==1.4.2
+
+# Desenvolvimento / avaliação
 matplotlib>=3.7
 seaborn>=0.13
 jupyter
 ipykernel
+
+# Testes / qualidade
+pytest==9.0.2
+pytest-cov==7.0.0
+black
+flake8

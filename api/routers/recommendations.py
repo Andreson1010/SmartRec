@@ -8,6 +8,7 @@ import time
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 
 from api.models.recommendations import RecommendationRequest, RecommendationResponse
+from api.security import verify_api_key
 from api.services.recommendations import RecommendationService
 
 logger = logging.getLogger(__name__)
@@ -27,6 +28,7 @@ def get_rec_service(request: Request) -> RecommendationService:
 async def get_recommendations(
     payload: RecommendationRequest,
     service: RecommendationService = Depends(get_rec_service),
+    _: str = Depends(verify_api_key),
 ) -> RecommendationResponse:
     """Retorna os top-K produtos recomendados para o usuário.
 

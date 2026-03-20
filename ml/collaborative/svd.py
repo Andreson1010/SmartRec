@@ -10,8 +10,9 @@ nos requisitos do projeto.
 from __future__ import annotations
 
 import logging
-import pickle
 from pathlib import Path
+
+import joblib
 from typing import Any
 
 import mlflow
@@ -187,8 +188,7 @@ class SVDRecommender(BaseRecommender):
         """
         path = Path(path)
         path.mkdir(parents=True, exist_ok=True)
-        with open(path / "svd.pkl", "wb") as f:
-            pickle.dump(self, f)
+        joblib.dump(self, path / "svd.joblib")
         logger.info("SVDRecommender salvo em %s", path)
 
     @classmethod
@@ -200,8 +200,7 @@ class SVDRecommender(BaseRecommender):
         path:
             Diretorio onde o modelo foi salvo por :meth:`save`.
         """
-        with open(Path(path) / "svd.pkl", "rb") as f:
-            return pickle.load(f)
+        return joblib.load(Path(path) / "svd.joblib")
 
     # ------------------------------------------------------------------
     # Helpers internos

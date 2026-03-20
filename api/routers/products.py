@@ -8,6 +8,7 @@ import time
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from api.models.products import SimilarProductsResponse
+from api.security import verify_api_key
 from api.services.products import ProductService
 
 logger = logging.getLogger(__name__)
@@ -23,6 +24,7 @@ async def get_similar_products(
     product_id: str,
     top_k: int = Query(10, ge=1, le=100, description="Número de produtos similares"),
     service: ProductService = Depends(),
+    _: str = Depends(verify_api_key),
 ) -> SimilarProductsResponse:
     """Retorna os K produtos mais similares ao produto informado.
 
