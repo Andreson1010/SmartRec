@@ -126,7 +126,8 @@ class SemanticRetriever:
         Returns
         -------
         dict[str, float]
-            Mapeamento ``product_id → cosine_similarity`` apenas para produtos indexados.
+            Mapeamento ``product_id → cosine_similarity`` para produtos
+            indexados.
         """
         all_scores = self._embeddings @ query_vector
         pid_to_score = {
